@@ -59,7 +59,12 @@ class FileChecker(threading.Thread):
             if not path:
                 continue
             if path not in self.timestamps:
-                self.timestamps[path] = os.stat(path).st_mtime
+                # Skip missing paths (e.g. Windows console-script wrappers
+                # expose a non-existent __main__.py inside the .exe).
+                try:
+                    self.timestamps[path] = os.stat(path).st_mtime
+                except OSError:
+                    continue
 
     def filesOK(self) -> bool:
         if self.checkmodules:
