@@ -384,9 +384,15 @@ The lids need to be glued.
 
         if self.outside:
             points = vectors.kerf(points, -t)
-            bottom_edge = self.bottom != "none"
-            top_edge = self.top != "none"
-            self.h = self.adjustSize(self.h, bottom_edge, top_edge)
+            # Size wall height from the actual top/bottom edge widths.
+            # tslot_on=walls uses protruding tabs (margin=inner_offset);
+            # tslot_on=panels uses plain/mate edges (no protrusion) so h stays
+            # the full outside height.
+            e1 = False if self.bottom == "none" else self.edges.get(
+                self._wallTBEdge(self.bottom))
+            e2 = False if self.top == "none" else self.edges.get(
+                self._wallTBEdge(self.top))
+            self.h = self.adjustSize(self.h, e1, e2)
 
         self.poly_points = points
         self.borders = self.pointsToBorders(points)
