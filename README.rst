@@ -1,5 +1,6 @@
-## FORK OF https://github.com/florianfesti/boxes.py
 
+FORK OF https://github.com/florianfesti/boxes.py
+================================================
 This fork: https://github.com/TobyKLight/boxes
 
 Customised for a specific project:
@@ -23,24 +24,26 @@ How to download and run for non-coders
 4. Open a terminal in that unzipped folder
 5. Install the python project dependencies 
 
-```
-pip install -e .
-```
+.. code-block:: rst
+
+    pip install -e
+
 
 6. Start the local web UI::
 
-```
-boxesserver
-```
+.. code-block:: rst
+
+    boxesserver
+
 
 7. Open http://localhost:8000 in your browser. Under **Box**, open
    **IrregularBox**. Change settings and generate SVG for your laser
    cutter. Stop the server with Ctrl+C in the terminal.
 
-IrregularBox — activating T-slots
+New functions
 ---------------------------------
 
-In the IrregularBox UI:
+In IrregularBox Settings:
 
 - **join** — ``finger`` (classic finger joints) or ``tslot`` (T-slots +
   support tabs). Default: ``tslot``.
