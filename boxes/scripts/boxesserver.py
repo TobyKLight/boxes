@@ -21,8 +21,9 @@ import glob
 import html
 import io
 import mimetypes
-import os.path
+import os
 import re
+import signal
 import sys
 import threading
 import time
@@ -44,14 +45,20 @@ import boxes
 
 class FileChecker(threading.Thread):
     def __init__(self, files=[], checkmodules: bool = True) -> None:
-        super().__init__()
+        # Daemon so a stuck watcher cannot keep the process alive after Ctrl-C.
+        super().__init__(daemon=True)
         self.checkmodules = checkmodules
         self.timestamps = {}
         self._stopped = False
+        self.restart_requested = False
+        self._httpd = None
         for path in files:
             self.timestamps[path] = os.stat(path).st_mtime
         if checkmodules:
             self._addModules()
+
+    def set_httpd(self, httpd) -> None:
+        self._httpd = httpd
 
     def _addModules(self) -> None:
         for name, module in sys.modules.items():
@@ -80,7 +87,14 @@ class FileChecker(threading.Thread):
     def run(self) -> None:
         while not self._stopped:
             if not self.filesOK():
-                os.execl(sys.executable, 'python', __file__, *sys.argv[1:])
+                # Never os.exec* from this thread — on Windows that can leave
+                # the old process listening while a new one starts. Ask main
+                # to shut down cleanly, then restart.
+                self.restart_requested = True
+                httpd = self._httpd
+                if httpd is not None:
+                    httpd.shutdown()
+                return
             time.sleep(1)
 
     def stop(self) -> None:
@@ -759,12 +773,34 @@ def main() -> None:
     fc.start()
 
     httpd = make_server(args.host, args.port, boxserver.serve)
+    fc.set_httpd(httpd)
+
+    def _shutdown(_signum=None, _frame=None) -> None:
+        fc.stop()
+        # shutdown() must not run in the serve_forever thread / signal handler.
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
+
+    signal.signal(signal.SIGINT, _shutdown)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _shutdown)
+    # Windows Ctrl-Break / some terminals
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _shutdown)
+
     print(f"BoxesServer serving on http://{args.host or '*'}:{args.port}/...")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
+        _shutdown()
+    finally:
         fc.stop()
-    httpd.server_close()
+        fc.join(timeout=2)
+        httpd.server_close()
+
+    if fc.restart_requested:
+        script = os.path.abspath(__file__)
+        os.execv(sys.executable, [sys.executable, script, *sys.argv[1:]])
+
     print("BoxesServer stops.")
 
 
