@@ -386,7 +386,7 @@ class Boxes:
             "--burn", action="store", type=float, default=0.1,
             help='burn correction (in mm)(bigger values for tighter fit) [\U0001F6C8](https://florianfesti.github.io/boxes/html/usermanual.html#burn)')
         defaultgroup.add_argument(
-            "--fixed_line_width", action="store", type=boolarg, default=False,
+            "--fixed_line_width", action="store", type=boolarg, default=True,
             help="burn doesn't affect line width (draw all cuts at 0.5pt)")
         defaultgroup.add_argument(
             "--format", action="store", type=str, default="svg",
