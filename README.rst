@@ -1,3 +1,13 @@
+FORK OF https://github.com/florianfesti/boxes.py
+
+Customised for a specific project 
+- Adds irregularbox polygon box generator, you can provide arbitrary polygon points. 
+  - Only tested with simple convex polygons 
+- Adds t-slot joint generator for the irregularbox only 
+  - although you could of course enter polygon coordinates that's a square or any simple primitive shape 
+
+
+======
 About Boxes.py
 ==============
 
