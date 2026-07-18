@@ -386,6 +386,9 @@ class Boxes:
             "--burn", action="store", type=float, default=0.1,
             help='burn correction (in mm)(bigger values for tighter fit) [\U0001F6C8](https://florianfesti.github.io/boxes/html/usermanual.html#burn)')
         defaultgroup.add_argument(
+            "--fixed_line_width", action="store", type=boolarg, default=False,
+            help="burn doesn't affect line width (draw all cuts at 0.5pt)")
+        defaultgroup.add_argument(
             "--format", action="store", type=str, default="svg",
             choices=self.formats.getFormats(),
             help="format of resulting file [\U0001F6C8](https://florianfesti.github.io/boxes/html/usermanual.html#format)")
@@ -463,6 +466,10 @@ class Boxes:
         if self.format == 'svg_Ponoko':
             self.ctx.set_line_width(0.01)
             self.set_source_color(Color.BLUE)
+        elif self.fixed_line_width:
+            # 0.5pt in mm — stroke only; burn still offsets geometry.
+            self.ctx.set_line_width(0.5 * 25.4 / 72)
+            self.set_source_color(Color.BLACK)
         else:
             self.ctx.set_line_width(max(2 * self.burn, 0.05))
             self.set_source_color(Color.BLACK)
