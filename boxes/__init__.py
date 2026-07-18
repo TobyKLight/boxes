@@ -730,6 +730,9 @@ class Boxes:
         self.addPart(edges.RackEdge(self, s))
         self.addPart(pulley.Pulley(self))
         self.addPart(parts.Parts(self))
+        # T-Slot joints (register last so chars are not overwritten)
+        edges.TSlotSettings(self.thickness, True,
+                **self.edgesettings.get("TSlot", {})).edgeObjects(self)
 
     def adjustSize(self, l, e1=True, e2=True):
         # Char to edge object

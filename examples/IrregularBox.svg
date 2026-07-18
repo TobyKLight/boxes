@@ -7,30 +7,40 @@ IrregularBox - Box with an irregular polygon as base
 Provide consecutive polygon vertices as ``- -points``
 (space-separated ``x,y`` pairs in mm). The outline is closed automatically.
 
+Use *join* to choose finger joints or T-slots between panels and walls.
+With T-slots, *tslot_on* selects which side carries the T-cutouts.
+*wall_joints* controls vertical wall-to-wall edges (finger joints or plain).
+
 For short side walls that don't fit a connecting finger reduce
 *surroundingspaces* and *finger* in the Finger Joint Settings.
+For short edges with T-slots enable *allow_cropped* in the T-Slot Settings.
 
 The lids need to be glued.
 
 
 
 Created with Boxes.py (https://boxes.hackerspace-bamberg.de/)
-Creation date: 2026-07-18 12:01:26
+Creation date: 2026-07-18 21:19:31
 Command line (remove spaces between dashes): boxes IrregularBox - -output
 -->
 <title>IrregularBox</title>
 <metadata>
 <rdf:RDF><cc:Work>
 <dc:title>Box - IrregularBox</dc:title>
-<dc:date>2026-07-18 12:01:26</dc:date>
+<dc:date>2026-07-18 21:19:31</dc:date>
 <dc:source>boxes IrregularBox --output examples/IrregularBox.svg</dc:source>
 <dc:description>Box with an irregular polygon as base
 
 Provide consecutive polygon vertices as ``--points``
 (space-separated ``x,y`` pairs in mm). The outline is closed automatically.
 
+Use *join* to choose finger joints or T-slots between panels and walls.
+With T-slots, *tslot_on* selects which side carries the T-cutouts.
+*wall_joints* controls vertical wall-to-wall edges (finger joints or plain).
+
 For short side walls that don't fit a connecting finger reduce
 *surroundingspaces* and *finger* in the Finger Joint Settings.
+For short edges with T-slots enable *allow_cropped* in the T-Slot Settings.
 
 The lids need to be glued.
 

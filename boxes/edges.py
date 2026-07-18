@@ -1157,6 +1157,291 @@ class CrossingFingerHoleEdge(Edge):
 
 
 #############################################################################
+####     T-Slot Joints
+#############################################################################
+
+class TSlotSettings(Settings):
+    """Settings for T-Slot Joints
+
+Values:
+
+* absolute
+
+  * bolt : 5.0 : bolt shaft diameter in mm
+  * nut_width : 7.5 : nut width across flats in mm
+  * nut_height : 3.0 : nut thickness along the shaft in mm
+  * shaft_length : 12.0 : T-slot depth from the original joining surface in mm
+  * nut_offset : 3.0 : distance from the original joining surface to the nut pocket in mm
+  * allow_cropped : False : allow one scaled unit when the edge is shorter than one full unit
+
+* relative (in multiples of thickness)
+
+  * inner_offset : 1.0 : how far the wall body is inset from the original joining surface (multiples of thickness)
+  * tab_offset : 2.5 : distance from T center to tab center (multiples of thickness)
+  * tab_width : 2.0 : width of each support tab (multiples of thickness)
+  * safe : 1.0 : margin outside each tab (multiples of thickness)
+  * play : 0.0 : extra space on counterpart slots and holes (multiples of thickness)
+"""
+
+    absolute_params = {
+        "bolt": 5.0,
+        "nut_width": 7.5,
+        "nut_height": 3.0,
+        "shaft_length": 12.0,
+        "nut_offset": 3.0,
+        "allow_cropped": False,
+    }
+
+    relative_params = {
+        "inner_offset": 1.0,
+        "tab_offset": 2.5,
+        "tab_width": 2.0,
+        "safe": 1.0,
+        "play": 0.0,
+    }
+
+    angle = 90
+
+    def checkValues(self) -> None:
+        if self.tab_width <= 0:
+            raise ValueError("TSlotSettings: tab_width must be positive")
+        if self.bolt <= 0 or self.nut_width <= 0:
+            raise ValueError("TSlotSettings: bolt and nut_width must be positive")
+        if self.inner_offset < 0:
+            raise ValueError("TSlotSettings: inner_offset must not be negative")
+        if self.shaft_length < self.nut_offset + self.nut_height:
+            raise ValueError(
+                "TSlotSettings: shaft_length must be at least nut_offset + nut_height")
+        if self.shaft_length <= self.inner_offset:
+            raise ValueError(
+                "TSlotSettings: shaft_length must be greater than inner_offset")
+        span = 2 * self.tab_offset - self.tab_width
+        if span + 1e-9 < max(self.nut_width, self.bolt):
+            raise ValueError(
+                "TSlotSettings: nut/bolt do not fit between tabs; "
+                "increase tab_offset or reduce nut_width/tab_width")
+
+    def unitWidth(self, tab_offset=None, tab_width=None, safe=None) -> float:
+        tab_offset = self.tab_offset if tab_offset is None else tab_offset
+        tab_width = self.tab_width if tab_width is None else tab_width
+        safe = self.safe if safe is None else safe
+        return 2 * (tab_offset + tab_width / 2 + safe)
+
+    def calcSlots(self, length: float):
+        """Return (count, centers, layout) for T-slot units along length.
+
+        layout is None for a plain edge, or a dict with tab_offset, tab_width,
+        safe used for drawing (may be scaled when cropped).
+        """
+        unit = self.unitWidth()
+        n = int(length // unit) if unit > 0 else 0
+        layout = {
+            "tab_offset": self.tab_offset,
+            "tab_width": self.tab_width,
+            "safe": self.safe,
+            "unit": unit,
+        }
+
+        if n == 0:
+            min_len = self.bolt + 2 * self.tab_width
+            if self.allow_cropped and length >= min_len and unit > 0:
+                # Scale tab_offset and safe so one unit fills the edge.
+                half_tab = self.tab_width / 2
+                budget = length / 2 - half_tab
+                base = self.tab_offset + self.safe
+                if budget <= 0 or base <= 0:
+                    return 0, [], None
+                scale = budget / base
+                tab_offset = self.tab_offset * scale
+                safe = self.safe * scale
+                span = 2 * tab_offset - self.tab_width
+                if span + 1e-9 < max(self.nut_width, self.bolt):
+                    return 0, [], None
+                layout = {
+                    "tab_offset": tab_offset,
+                    "tab_width": self.tab_width,
+                    "safe": safe,
+                    "unit": length,
+                }
+                return 1, [length / 2.0], layout
+            return 0, [], None
+
+        if n == 1:
+            return 1, [length / 2.0], layout
+
+        gap = (length - n * unit) / (n - 1)
+        centers = [unit / 2.0 + i * (unit + gap) for i in range(n)]
+        return n, centers, layout
+
+    def edgeObjects(self, boxes, chars: str = "wW", add: bool = True):
+        edges = [TSlotEdge(boxes, self),
+                 TSlotEdgeCounterPart(boxes, self)]
+        return self._edgeObjects(edges, boxes, chars, add)
+
+
+class TSlotBase(ABC):
+    """Shared helpers for T-slot edges."""
+
+    def fingerLength(self, angle: float) -> tuple[float, float]:
+        # Tab tips sit at the original joining surface; the surrounding wall
+        # body is recessed by inner_offset (default one thickness).
+        base = self.settings.inner_offset
+        if angle >= 90 or angle <= -90:
+            return base, 0.0
+        if angle < 0:
+            return math.sin(math.radians(-angle)) * base, 0.0
+        a = 90 - (180 - angle) / 2.0
+        fingerlength = base * math.tan(math.radians(a))
+        b = 90 - 2 * a
+        spacerecess = -math.sin(math.radians(b)) * fingerlength
+        return fingerlength, spacerecess
+
+    def drawTab(self, width: float, height: float) -> None:
+        self.polyline(0, -90, height, 90, width, 90, height, -90)
+
+    def drawTSlot(self) -> None:
+        """Draw T-slot from the recessed wall edge into the part.
+
+        ``shaft_length`` and ``nut_offset`` are measured from the original
+        joining surface (tab tips). The wall body is already inset by
+        ``inner_offset``, so the remaining depth from this edge is
+        ``shaft_length - inner_offset``.
+        """
+        s = self.settings
+        d = s.bolt
+        d_nut = s.nut_width
+        h_nut = s.nut_height
+        inset = s.inner_offset
+        # Depths from the recessed edge (original surface is inset away).
+        l1 = max(0.0, s.nut_offset - inset)
+        depth = s.shaft_length - inset
+        l_rest = depth - l1 - h_nut
+        if l_rest < -1e-9:
+            raise ValueError(
+                "TSlotSettings: nut pocket does not fit between inner_offset "
+                "and shaft_length")
+        l_rest = max(0.0, l_rest)
+
+        self.corner(90)
+        self.edge(l1)
+        self.corner(90)
+        self.edge((d_nut - d) / 2.0)
+        self.corner(-90)
+        self.edge(h_nut)
+        self.corner(-90)
+        self.edge((d_nut - d) / 2.0)
+        self.corner(90)
+        self.edge(l_rest)
+        self.corner(-90)
+        self.edge(d)
+        self.corner(-90)
+        self.edge(l_rest)
+        self.corner(90)
+        self.edge((d_nut - d) / 2.0)
+        self.corner(-90)
+        self.edge(h_nut)
+        self.corner(-90)
+        self.edge((d_nut - d) / 2.0)
+        self.corner(90)
+        self.edge(l1)
+        self.corner(90)
+
+
+class TSlotEdge(BaseEdge, TSlotBase):
+    """Edge with T-slots and supporting tabs
+
+    The wall body edge runs on the recessed plane (inset by ``inner_offset``
+    from the original joining surface). Tab tips sit at that original surface.
+    T-slot depth (``shaft_length`` / ``nut_offset``) is measured from the
+    original surface.
+    """
+    char = 'w'
+    description = "T-Slot Joint"
+    positive = True
+
+    def drawPattern(self, length: float) -> None:
+        """Draw T-slot units for ``length`` (no leading/trailing plain edge)."""
+        n, centers, layout = self.settings.calcSlots(length)
+        if not n or layout is None:
+            self.edge(length, tabs=2)
+            return
+
+        tab_offset = layout["tab_offset"]
+        tab_width = layout["tab_width"]
+        safe = layout["safe"]
+        unit = layout["unit"]
+        bolt = self.settings.bolt
+        h = self.fingerLength(self.settings.angle)[0]
+
+        pos = 0.0
+        for cx in centers:
+            unit_start = cx - unit / 2.0
+            if unit_start > pos:
+                self.edge(unit_start - pos)
+
+            self.edge(safe)
+            self.drawTab(tab_width, h)
+            gap = unit / 2.0 - bolt / 2.0 - safe - tab_width
+            if gap > 1e-9:
+                self.edge(gap)
+            self.drawTSlot()
+            if gap > 1e-9:
+                self.edge(gap)
+            self.drawTab(tab_width, h)
+            self.edge(safe)
+
+            pos = unit_start + unit
+
+        if length > pos:
+            self.edge(length - pos, tabs=1)
+
+    def __call__(self, length, **kw):
+        self.drawPattern(length)
+
+    def margin(self) -> float:
+        return self.fingerLength(self.settings.angle)[0]
+
+    def startWidth(self) -> float:
+        # Edge path follows the recessed wall body; tabs and T-slot extend from there.
+        return 0.0
+
+
+class TSlotEdgeCounterPart(BaseEdge, TSlotBase):
+    """Straight edge with tab slots and bolt holes matching TSlotEdge"""
+    char = 'W'
+    description = "T-Slot Joint (opposing side)"
+    positive = False
+
+    def __call__(self, length, **kw):
+        n, centers, layout = self.settings.calcSlots(length)
+        play = self.settings.play
+        t = self.settings.thickness
+        inset = self.settings.inner_offset
+
+        if n and layout is not None:
+            tab_offset = layout["tab_offset"]
+            tab_width = layout["tab_width"] + play
+            bolt_r = 0.5 * (self.settings.bolt + play)
+            # Wall sits inset from the outer edge; holes under the wall body.
+            y = self.burn + inset + t / 2.0
+            with self.saved_context():
+                for cx in centers:
+                    self.rectangularHole(
+                        cx - tab_offset, y, tab_width, t + play)
+                    self.rectangularHole(
+                        cx + tab_offset, y, tab_width, t + play)
+                    self.hole(cx, y, bolt_r)
+
+        self.edge(length, tabs=2)
+
+    def margin(self) -> float:
+        return 0.0
+
+    def startWidth(self) -> float:
+        return 0.0
+
+
+#############################################################################
 ####     Stackable Joints
 #############################################################################
 

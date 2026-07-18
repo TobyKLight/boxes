@@ -66,8 +66,15 @@ class IrregularBox(Boxes):
     description = """Provide consecutive polygon vertices as ``--points``
 (space-separated ``x,y`` pairs in mm). The outline is closed automatically.
 
+Use *join* to choose finger joints or T-slots between panels and walls.
+With T-slots, *tslot_on* selects which side carries the T-cutouts.
+Side walls are inset by *inner_offset* (default one material thickness) so they
+sit within the top/bottom panels and the T-slots are closed by the panel.
+*wall_joints* controls vertical wall-to-wall edges (finger joints or plain).
+
 For short side walls that don't fit a connecting finger reduce
 *surroundingspaces* and *finger* in the Finger Joint Settings.
+For short edges with T-slots enable *allow_cropped* in the T-Slot Settings.
 
 The lids need to be glued.
 """
@@ -77,6 +84,7 @@ The lids need to be glued.
     def __init__(self) -> None:
         Boxes.__init__(self)
         self.addSettingsArgs(edges.FingerJointSettings, surroundingspaces=1)
+        self.addSettingsArgs(edges.TSlotSettings)
         self.buildArgParser("h", "outside")
         self.argparser.add_argument(
             "--points", action="store", type=argparsePoints,
@@ -90,6 +98,18 @@ The lids need to be glued.
             "--bottom", action="store", type=str, default="closed",
             choices=["none", "closed", "hole", "lid"],
             help="style of the bottom and bottom lid")
+        self.argparser.add_argument(
+            "--join", action="store", type=str, default="finger",
+            choices=["finger", "tslot"],
+            help="join style between panels and walls")
+        self.argparser.add_argument(
+            "--tslot_on", action="store", type=str, default="walls",
+            choices=["walls", "panels"],
+            help="which side gets T-slots when join is tslot")
+        self.argparser.add_argument(
+            "--wall_joints", action="store", type=str, default="finger",
+            choices=["finger", "none"],
+            help="vertical wall-to-wall joints")
 
     @staticmethod
     def _signedArea(points):
@@ -153,22 +173,161 @@ The lids need to be glued.
             self.pointsToBorders(inset), edge="e",
             turtle=True, correct_corners=False)
 
-    def _edgeFor(self, style):
-        return "F" if style != "none" else "e"
+    def _panelEdge(self):
+        """Edge char / objects used on top/bottom panels for panel↔wall joins."""
+        if self.join == "tslot":
+            if self.tslot_on == "walls":
+                # Plain outline; mate holes via callback aligned to inset walls.
+                return "e"
+            # One centered T-slot edge object per polygon side.
+            n = len(self.borders) // 2
+            return [self._CenteredPanelTSlot(self, i) for i in range(n)]
+        return "f"
+
+    class _CenteredPanelTSlot:
+        """T-slot pattern sized to the inset wall, centered on one panel edge."""
+
+        def __init__(self, box, index):
+            self.box = box
+            self.index = index
+            self.settings = box.edges["w"].settings
+
+        def margin(self):
+            return self.box.edges["w"].margin()
+
+        def startWidth(self):
+            return self.box.edges["w"].startWidth()
+
+        def endWidth(self):
+            return self.startWidth()
+
+        def spacing(self):
+            return self.startWidth() + self.margin()
+
+        def __call__(self, length, **kw):
+            wall_len = self.box.wall_borders[2 * self.index]
+            lo = (length - wall_len) / 2.0
+            if lo > 1e-9:
+                self.box.edge(lo)
+            self.box.edges["w"].drawPattern(wall_len)
+            if lo > 1e-9:
+                self.box.edge(lo)
+
+    def _wallTBEdge(self, style):
+        """Top/bottom edge char on walls for a given panel style."""
+        if style == "none":
+            return "e"
+        if self.join == "tslot":
+            return "w" if self.tslot_on == "walls" else "e"
+        return "F"
+
+    def _tslotMateHoles(self, number, path_borders, slot_borders, on_outer_panel=True):
+        """Draw tab slots + bolt holes for edge ``number``, aligned to slots."""
+        settings = self.edges["w"].settings
+        slot_len = slot_borders[2 * number]
+        path_len = path_borders[2 * number]
+        n, centers, layout = settings.calcSlots(slot_len)
+        if not n or layout is None:
+            return
+
+        play = settings.play
+        t = self.thickness
+        inset = settings.inner_offset
+        tab_offset = layout["tab_offset"]
+        tab_width = layout["tab_width"] + play
+        bolt_r = 0.5 * (settings.bolt + play)
+        # Center the (possibly shorter) slot pattern on this edge.
+        shift = (path_len - slot_len) / 2.0
+        # On the outer panel, holes sit under the inset wall; on the wall
+        # itself they sit one half-thickness in from the joining edge.
+        if on_outer_panel:
+            y = self.burn + inset + t / 2.0
+        else:
+            y = self.burn + t / 2.0
+        for cx in centers:
+            x = shift + cx
+            self.rectangularHole(x - tab_offset, y, tab_width, t + play)
+            self.rectangularHole(x + tab_offset, y, tab_width, t + play)
+            self.hole(x, y, bolt_r)
+
+    def _panelMateCB(self, number):
+        # Panels are the outer path; slots come from inset walls.
+        self._tslotMateHoles(
+            number, self.borders, self.wall_borders, on_outer_panel=True)
+
+    def _panelHoleAndMateCB(self, number):
+        if number == 0:
+            self.holeCB()
+        self._panelMateCB(number)
 
     def _drawPanel(self, style, move="right"):
         if style == "none":
             return
 
+        edge = self._panelEdge()
+        mate = self.join == "tslot" and self.tslot_on == "walls"
+
         if style == "closed":
-            self.polygonWall(self.borders, edge="f", move=move)
+            cb = self._panelMateCB if mate else None
+            self.polygonWall(self.borders, edge=edge, callback=cb, move=move)
         elif style == "hole":
-            self.polygonWall(
-                self.borders, edge="f", callback=[self.holeCB], move=move)
+            cb = self._panelHoleAndMateCB if mate else [self.holeCB]
+            self.polygonWall(self.borders, edge=edge, callback=cb, move=move)
         elif style == "lid":
-            self.polygonWall(
-                self.borders, edge="f", callback=[self.holeCB], move=move)
+            cb = self._panelHoleAndMateCB if mate else [self.holeCB]
+            self.polygonWall(self.borders, edge=edge, callback=cb, move=move)
             self.polygonWall(self.lid_borders, edge="e", move=move)
+
+    def _polygonWallsStraight(self, borders, h, bottom, top):
+        """Walls with plain vertical edges (butt joints)."""
+        borders = self._closePolygon(borders)
+        bottom_e = self.edges.get(bottom, bottom)
+        top_e = self.edges.get(top, top)
+        i = 0
+        while i < len(borders):
+            length = borders[i]
+            self.rectangularWall(
+                length, h, [bottom_e, "e", top_e, "e"], move="right")
+            i += 2
+
+    def _polygonWallsTSlotMate(self, wall_borders, h, top):
+        """Walls whose bottom carries T-slot counterpart holes (tslot_on=panels)."""
+        wall_borders = self._closePolygon(wall_borders)
+        top_e = self.edges.get(top, top)
+        i = 0
+        edge_i = 0
+        while i < len(wall_borders):
+            length = wall_borders[i]
+            idx = edge_i
+
+            class _Bottom:
+                def __init__(self, box, idx):
+                    self.box = box
+                    self.idx = idx
+
+                def margin(self):
+                    return 0.0
+
+                def startWidth(self):
+                    return 0.0
+
+                def endWidth(self):
+                    return 0.0
+
+                def spacing(self):
+                    return 0.0
+
+                def __call__(self, length, **kw):
+                    # Pattern is sized to the wall length (centered on the panel).
+                    self.box._tslotMateHoles(
+                        self.idx, self.box.wall_borders, self.box.wall_borders,
+                        on_outer_panel=False)
+                    self.box.edge(length, tabs=2)
+
+            self.rectangularWall(
+                length, h, [_Bottom(self, idx), "e", top_e, "e"], move="right")
+            i += 2
+            edge_i += 1
 
     def render(self):
         points = self.points
@@ -189,14 +348,37 @@ The lids need to be glued.
         self.lid_borders = self.pointsToBorders(
             vectors.kerf(points, t))
 
+        # With T-slots, side walls sit inset from the panel outer edge so the
+        # panel closes the T openings. Wall lengths follow the inset polygon.
+        if self.join == "tslot":
+            inset = self.edges["w"].settings.inner_offset
+            wall_points = vectors.kerf(points, -inset)
+            if len(wall_points) < 3:
+                raise ValueError(
+                    "T-slot inner_offset is too large for this polygon; "
+                    "walls would collapse")
+            self.wall_borders = self.pointsToBorders(wall_points)
+        else:
+            self.wall_borders = self.borders
+
         with self.saved_context():
             self._drawPanel(self.bottom, move="right")
             self._drawPanel(self.top, move="right")
 
-        self.polygonWall(self.borders, edge="f", move="up only")
+        panel_e = self._panelEdge()
+        self.polygonWall(self.borders, edge=panel_e, move="up only")
         self.moveTo(0, t)
 
-        self.polygonWalls(
-            self.borders, self.h,
-            bottom=self._edgeFor(self.bottom),
-            top=self._edgeFor(self.top))
+        bottom = self._wallTBEdge(self.bottom)
+        top = self._wallTBEdge(self.top)
+
+        if self.join == "tslot" and self.tslot_on == "panels" and bottom != "e":
+            # Panels carry T-slots; walls get aligned counterpart holes.
+            # Vertical wall joints are plain in this mode (mate bottoms need
+            # per-edge drawing).
+            self._polygonWallsTSlotMate(self.wall_borders, self.h, top)
+        elif self.wall_joints == "none":
+            self._polygonWallsStraight(self.wall_borders, self.h, bottom, top)
+        else:
+            self.polygonWalls(
+                self.wall_borders, self.h, bottom=bottom, top=top)
