@@ -14,6 +14,7 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import copy
 import math
 import re
 
@@ -91,7 +92,7 @@ The lids need to be glued.
             default="0,0 120,0 100,80 20,70",
             help="polygon vertices as space-separated x,y pairs in mm")
         self.argparser.add_argument(
-            "--top", action="store", type=str, default="none",
+            "--top", action="store", type=str, default="closed",
             choices=["none", "closed", "hole", "lid"],
             help="style of the top and lid")
         self.argparser.add_argument(
@@ -99,11 +100,11 @@ The lids need to be glued.
             choices=["none", "closed", "hole", "lid"],
             help="style of the bottom and bottom lid")
         self.argparser.add_argument(
-            "--join", action="store", type=str, default="finger",
+            "--join", action="store", type=str, default="tslot",
             choices=["finger", "tslot"],
             help="join style between panels and walls")
         self.argparser.add_argument(
-            "--tslot_on", action="store", type=str, default="walls",
+            "--tslot_on", action="store", type=str, default="panels",
             choices=["walls", "panels"],
             help="which side gets T-slots when join is tslot")
         self.argparser.add_argument(
@@ -238,12 +239,10 @@ The lids need to be glued.
         bolt_r = 0.5 * (settings.bolt + play)
         # Center the (possibly shorter) slot pattern on this edge.
         shift = (path_len - slot_len) / 2.0
-        # On the outer panel, holes sit under the inset wall; on the wall
-        # itself they sit one half-thickness in from the joining edge.
-        if on_outer_panel:
-            y = self.burn + inset + t / 2.0
-        else:
-            y = self.burn + t / 2.0
+        # Always keep an inner_offset lip from the joining edge, then center
+        # holes on the mating material thickness (panel on wall, or wall on
+        # outer panel).
+        y = self.burn + inset + t / 2.0
         for cx in centers:
             x = shift + cx
             self.rectangularHole(x - tab_offset, y, tab_width, t + play)
@@ -316,18 +315,64 @@ The lids need to be glued.
         return _Mate()
 
     def _polygonWallsTSlotMate(self, wall_borders, h, mate_bottom, mate_top):
-        """Walls with T-slot counterpart holes (tslot_on=panels)."""
+        """Walls with T-slot counterpart holes (tslot_on=panels).
+
+        Vertical edges follow ``wall_joints`` (finger or none), matching
+        ``polygonWalls`` pairing/angles when fingers are enabled.
+        """
         wall_borders = self._closePolygon(wall_borders)
+        use_fingers = self.wall_joints == "finger"
+
+        if use_fingers:
+            leftsettings = copy.deepcopy(self.edges["f"].settings)
+            lf, lF, _lh = leftsettings.edgeObjects(self, add=False)
+            rightsettings = copy.deepcopy(self.edges["f"].settings)
+            rf, rF, _rh = rightsettings.edgeObjects(self, add=False)
+
+        length_correction = 0.0
+        angle = wall_borders[-1]
         i = 0
         edge_i = 0
+        part_cnt = 0
+        n_parts = len(wall_borders) // 2
+
         while i < len(wall_borders):
-            length = wall_borders[i]
-            bottom_e = self._mateEdge(edge_i) if mate_bottom else "e"
-            top_e = self._mateEdge(edge_i) if mate_top else "e"
+            if use_fingers:
+                if part_cnt % 2:
+                    left, right = lf, rf
+                else:
+                    if part_cnt == n_parts - 1:
+                        left, right = lF, rf
+                    else:
+                        left, right = lF, rF
+                if angle == 0:
+                    left = self.edges["d"]
+                leftsettings.setValues(self.thickness, angle=angle)
+            else:
+                left = right = self.edges["e"]
+
+            length = wall_borders[i] - length_correction
+            angle = wall_borders[i + 1]
+
+            if use_fingers:
+                rightsettings.setValues(self.thickness, angle=angle)
+                if angle == 0:
+                    right = self.edges["D"]
+            if angle < 0:
+                length_correction = self.thickness * math.tan(
+                    math.radians(-angle / 2))
+            else:
+                length_correction = 0.0
+            length -= length_correction
+
+            bottom_e = self._mateEdge(edge_i) if mate_bottom else self.edges["e"]
+            top_e = self._mateEdge(edge_i) if mate_top else self.edges["e"]
             self.rectangularWall(
-                length, h, [bottom_e, "e", top_e, "e"], move="right")
+                length, h, [bottom_e, right, top_e, left], move="right")
+
             i += 2
             edge_i += 1
+            part_cnt += 1
 
     def render(self):
         points = self.points
