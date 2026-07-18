@@ -1,12 +1,91 @@
-FORK OF https://github.com/florianfesti/boxes.py
+## FORK OF https://github.com/florianfesti/boxes.py
 
-Customised for a specific project 
-- Adds irregularbox polygon box generator, you can provide arbitrary polygon points. 
-  - Only tested with simple convex polygons 
-- Adds t-slot joint generator for the irregularbox only 
-  - although you could of course enter polygon coordinates that's a square or any simple primitive shape 
+This fork: https://github.com/TobyKLight/boxes
+
+Customised for a specific project:
+
+- **IrregularBox** — polygon box generator. Enter arbitrary XY vertices
+  (space-separated ``x,y`` pairs in mm). Only tested with simple convex
+  polygons. A square or other simple shape works fine if you enter its
+  corners as points.
+- **T-slot joints** for IrregularBox (panel↔wall joins), as an alternative
+  to finger joints on the panels to wall sides. (The wall sides can have finger joints or no joints)
+
+How to download and run for non-coders 
+-----------------------------------------------------
+
+1. If you don't have it install **Python 3** from https://www.python.org/downloads/
+   (on Windows, tick “Add python.exe to PATH” during setup).
+2. Open this page in a browser:
+   https://github.com/TobyKLight/boxes
+3. Click the green **Code** button → **Download ZIP**. Unzip the folder
+   somewhere convenient (e.g. your Desktop).
+4. Open a terminal in that unzipped folder
+5. Install the python project dependencies 
+
+```
+pip install -e .
+```
+
+6. Start the local web UI::
+
+```
+boxesserver
+```
+
+7. Open http://localhost:8000 in your browser. Under **Box**, open
+   **IrregularBox**. Change settings and generate SVG for your laser
+   cutter. Stop the server with Ctrl+C in the terminal.
+
+IrregularBox — activating T-slots
+---------------------------------
+
+In the IrregularBox UI:
+
+- **join** — ``finger`` (classic finger joints) or ``tslot`` (T-slots +
+  support tabs). Default: ``tslot``.
+- **tslot_on** — which face gets the T-cutouts (the other face gets the
+  mating tab slots + bolt holes):
+
+  - ``panels`` — T-slots on top/bottom panels (default)
+  - ``walls`` — T-slots on the vertical side walls
+
+- **wall_joints** — how vertical wall corners meet: ``finger`` or
+  ``none`` (butt joints). Independent of panel↔wall join style.
+- **points** — polygon outline, e.g. ``0,0 120,0 100,80 20,70``
+
+T-Slot Settings 
+-----------------------------------------------
+
+These are in mm 
+
+- **bolt** (5.0) — bolt shaft diameter
+- **nut_width** (7.5) / **nut_height** (3.0) — nut pocket across flats /
+  along the shaft
+- **shaft_length** (12.0) — how deep the T goes from the original joining
+  surface
+- **nut_offset** (7.0) — distance from that surface to the start of the
+  nut pocket
+- **allow_cropped** — if an edge is too short for a full T-unit, allow one
+  scaled unit
+
+These are relative multipliers of material thickness
+
+- **inner_offset** (1.0) — how far the wall body sits inset from the
+  original joining surface; tabs reach back out to that surface; the
+  panel closes the T openings. Play with it is the easiest way to see what it does. 
+- **tab_offset** (2.5) — centre-to-centre from bolt/T to each support tab
+- **tab_width** (2.0) — width of each support tab
+- **safe** (1.0) — margin outside each tab within a unit
+
+Other changes 
+- **fixed_line_width** (Default Settings, on by default) — In the original project setting a low burn also made very thin lines visually. 
+   With this on Burn still offsets the cut geometry for kerf; this only affects how thick lines look on
+  screen / in the file.
+- updated the boxesserver to work better on windows including shut down properly when you press ctrl-c 
 
 
+## ORIGINAL README BELOW ##
 ======
 About Boxes.py
 ==============
