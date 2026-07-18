@@ -1178,7 +1178,7 @@ Values:
 
   * inner_offset : 1.0 : how far the wall body is inset from the original joining surface (multiples of thickness)
   * tab_offset : 2.5 : distance from T center to tab center (multiples of thickness)
-  * tab_width : 2.0 : width of each support tab (multiples of thickness)
+  * tab_width : 1.0 : width of each support tab (multiples of thickness)
   * safe : 1.0 : margin outside each tab (multiples of thickness)
   * play : 0.0 : extra space on counterpart slots and holes (multiples of thickness)
 """
@@ -1195,7 +1195,7 @@ Values:
     relative_params = {
         "inner_offset": 1.0,
         "tab_offset": 2.5,
-        "tab_width": 2.0,
+        "tab_width": 1.0,
         "safe": 1.0,
         "play": 0.0,
     }
@@ -1282,29 +1282,12 @@ Values:
 class TSlotBase(ABC):
     """Shared helpers for T-slot edges."""
 
-    def fingerLength(self, angle: float) -> tuple[float, float]:
-        # Tab tips sit at the original joining surface; the surrounding wall
-        # body is recessed by inner_offset (default one thickness).
-        base = self.settings.inner_offset
-        if angle >= 90 or angle <= -90:
-            return base, 0.0
-        if angle < 0:
-            return math.sin(math.radians(-angle)) * base, 0.0
-        a = 90 - (180 - angle) / 2.0
-        fingerlength = base * math.tan(math.radians(a))
-        b = 90 - 2 * a
-        spacerecess = -math.sin(math.radians(b)) * fingerlength
-        return fingerlength, spacerecess
-
-    def drawTab(self, width: float, height: float) -> None:
-        self.polyline(0, -90, height, 90, width, 90, height, -90)
-
-    def drawTSlot(self) -> None:
-        """Draw T-slot from the recessed wall edge into the part.
+    def drawTSlotFromRecess(self) -> None:
+        """Draw T-slot from the recessed edge into the part.
 
         ``shaft_length`` and ``nut_offset`` are measured from the original
-        joining surface (tab tips). The wall body is already inset by
-        ``inner_offset``, so the remaining depth from this edge is
+        joining surface (flush tab tips). The surrounding edge is already
+        recessed by ``inner_offset``, so remaining depth is
         ``shaft_length - inner_offset``.
         """
         s = self.settings
@@ -1312,7 +1295,6 @@ class TSlotBase(ABC):
         d_nut = s.nut_width
         h_nut = s.nut_height
         inset = s.inner_offset
-        # Depths from the recessed edge (original surface is inset away).
         l1 = max(0.0, s.nut_offset - inset)
         depth = s.shaft_length - inset
         l_rest = depth - l1 - h_nut
@@ -1346,13 +1328,25 @@ class TSlotBase(ABC):
         self.edge(l1)
         self.corner(90)
 
+    def recessToInner(self) -> None:
+        """Step from the original surface into the recessed plane."""
+        self.corner(90)
+        self.edge(self.settings.inner_offset)
+        self.corner(-90)
+
+    def recessToOuter(self) -> None:
+        """Step from the recessed plane back to the original surface."""
+        self.corner(-90)
+        self.edge(self.settings.inner_offset)
+        self.corner(90)
+
 
 class TSlotEdge(BaseEdge, TSlotBase):
     """Edge with T-slots and supporting tabs
 
-    The wall body edge runs on the recessed plane (inset by ``inner_offset``
-    from the original joining surface). Tab tips sit at that original surface.
-    T-slot depth (``shaft_length`` / ``nut_offset``) is measured from the
+    Tab tips stay flush with the original joining surface. Surrounding material
+    (and the T-slot opening) is recessed by ``inner_offset`` (default one
+    thickness). ``shaft_length`` / ``nut_offset`` are measured from the
     original surface.
     """
     char = 'w'
@@ -1360,18 +1354,16 @@ class TSlotEdge(BaseEdge, TSlotBase):
     positive = True
 
     def drawPattern(self, length: float) -> None:
-        """Draw T-slot units for ``length`` (no leading/trailing plain edge)."""
+        """Draw T-slot units along ``length`` at the original surface."""
         n, centers, layout = self.settings.calcSlots(length)
         if not n or layout is None:
             self.edge(length, tabs=2)
             return
 
-        tab_offset = layout["tab_offset"]
         tab_width = layout["tab_width"]
         safe = layout["safe"]
         unit = layout["unit"]
         bolt = self.settings.bolt
-        h = self.fingerLength(self.settings.angle)[0]
 
         pos = 0.0
         for cx in centers:
@@ -1379,15 +1371,19 @@ class TSlotEdge(BaseEdge, TSlotBase):
             if unit_start > pos:
                 self.edge(unit_start - pos)
 
+            # On the original surface: safe + tab, then recess for gap/T/gap,
+            # then back out for the second tab + safe.
             self.edge(safe)
-            self.drawTab(tab_width, h)
+            self.edge(tab_width)  # flush tab at original surface
             gap = unit / 2.0 - bolt / 2.0 - safe - tab_width
+            self.recessToInner()
             if gap > 1e-9:
                 self.edge(gap)
-            self.drawTSlot()
+            self.drawTSlotFromRecess()
             if gap > 1e-9:
                 self.edge(gap)
-            self.drawTab(tab_width, h)
+            self.recessToOuter()
+            self.edge(tab_width)  # flush tab at original surface
             self.edge(safe)
 
             pos = unit_start + unit
@@ -1399,10 +1395,10 @@ class TSlotEdge(BaseEdge, TSlotBase):
         self.drawPattern(length)
 
     def margin(self) -> float:
-        return self.fingerLength(self.settings.angle)[0]
+        # Nothing protrudes past the original surface.
+        return 0.0
 
     def startWidth(self) -> float:
-        # Edge path follows the recessed wall body; tabs and T-slot extend from there.
         return 0.0
 
 

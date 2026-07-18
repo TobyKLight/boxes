@@ -290,42 +290,42 @@ The lids need to be glued.
                 length, h, [bottom_e, "e", top_e, "e"], move="right")
             i += 2
 
-    def _polygonWallsTSlotMate(self, wall_borders, h, top):
-        """Walls whose bottom carries T-slot counterpart holes (tslot_on=panels)."""
+    def _mateEdge(self, idx):
+        """Plain edge that also draws T-slot counterpart holes for wall edge idx."""
+        box = self
+
+        class _Mate:
+            def margin(self):
+                return 0.0
+
+            def startWidth(self):
+                return 0.0
+
+            def endWidth(self):
+                return 0.0
+
+            def spacing(self):
+                return 0.0
+
+            def __call__(self, length, **kw):
+                box._tslotMateHoles(
+                    idx, box.wall_borders, box.wall_borders,
+                    on_outer_panel=False)
+                box.edge(length, tabs=2)
+
+        return _Mate()
+
+    def _polygonWallsTSlotMate(self, wall_borders, h, mate_bottom, mate_top):
+        """Walls with T-slot counterpart holes (tslot_on=panels)."""
         wall_borders = self._closePolygon(wall_borders)
-        top_e = self.edges.get(top, top)
         i = 0
         edge_i = 0
         while i < len(wall_borders):
             length = wall_borders[i]
-            idx = edge_i
-
-            class _Bottom:
-                def __init__(self, box, idx):
-                    self.box = box
-                    self.idx = idx
-
-                def margin(self):
-                    return 0.0
-
-                def startWidth(self):
-                    return 0.0
-
-                def endWidth(self):
-                    return 0.0
-
-                def spacing(self):
-                    return 0.0
-
-                def __call__(self, length, **kw):
-                    # Pattern is sized to the wall length (centered on the panel).
-                    self.box._tslotMateHoles(
-                        self.idx, self.box.wall_borders, self.box.wall_borders,
-                        on_outer_panel=False)
-                    self.box.edge(length, tabs=2)
-
+            bottom_e = self._mateEdge(edge_i) if mate_bottom else "e"
+            top_e = self._mateEdge(edge_i) if mate_top else "e"
             self.rectangularWall(
-                length, h, [_Bottom(self, idx), "e", top_e, "e"], move="right")
+                length, h, [bottom_e, "e", top_e, "e"], move="right")
             i += 2
             edge_i += 1
 
@@ -372,11 +372,17 @@ The lids need to be glued.
         bottom = self._wallTBEdge(self.bottom)
         top = self._wallTBEdge(self.top)
 
-        if self.join == "tslot" and self.tslot_on == "panels" and bottom != "e":
+        if self.join == "tslot" and self.tslot_on == "panels":
             # Panels carry T-slots; walls get aligned counterpart holes.
-            # Vertical wall joints are plain in this mode (mate bottoms need
-            # per-edge drawing).
-            self._polygonWallsTSlotMate(self.wall_borders, self.h, top)
+            # Do not gate on bottom/top edge chars: those are "e" in this mode.
+            mate_bottom = self.bottom != "none"
+            mate_top = self.top != "none"
+            if mate_bottom or mate_top:
+                self._polygonWallsTSlotMate(
+                    self.wall_borders, self.h, mate_bottom, mate_top)
+            else:
+                self._polygonWallsStraight(
+                    self.wall_borders, self.h, bottom, top)
         elif self.wall_joints == "none":
             self._polygonWallsStraight(self.wall_borders, self.h, bottom, top)
         else:
