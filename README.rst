@@ -9,7 +9,7 @@ Customised for a specific project:
   (space-separated ``x,y`` pairs in mm). Only tested with simple convex
   polygons. A square or other simple shape works fine if you enter its
   corners as points.
-- **T-slot joints** for IrregularBox (panel↔wall joins), as an alternative
+- **T-slot joints** for IrregularBox generator only, as an alternative
   to finger joints on the panels to wall sides. (The wall sides can have finger joints or no joints)
 
 How to download and run for non-coders 
