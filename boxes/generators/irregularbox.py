@@ -72,6 +72,9 @@ With T-slots, *tslot_on* selects which side carries the T-cutouts.
 Side walls are inset by *inner_offset* (default one material thickness) so they
 sit within the top/bottom panels and the T-slots are closed by the panel.
 *wall_joints* controls vertical wall-to-wall edges (finger joints or plain).
+*preserve_orientation* keeps the top/bottom polygon panel in the same
+orientation as the entered points (instead of rotating it so the first
+edge lies horizontal). Side walls always stay flat.
 
 For short side walls that don't fit a connecting finger reduce
 *surroundingspaces* and *finger* in the Finger Joint Settings.
@@ -111,6 +114,10 @@ The lids need to be glued.
             "--wall_joints", action="store", type=str, default="finger",
             choices=["finger", "none"],
             help="vertical wall-to-wall joints")
+        self.argparser.add_argument(
+            "--preserve_orientation", action="store", type=boolarg,
+            default=False,
+            help="keep the polygon panel oriented as entered (do not flatten first edge)")
 
     @staticmethod
     def _signedArea(points):
@@ -259,6 +266,47 @@ The lids need to be glued.
             self.holeCB()
         self._panelMateCB(number)
 
+    def _panelHeading(self):
+        """Absolute heading of the first polygon edge (degrees)."""
+        p0, p1 = self.poly_points[0], self.poly_points[1]
+        return math.degrees(math.atan2(p1[1] - p0[1], p1[0] - p0[0]))
+
+    def _polygonWallMaybeOriented(self, borders, edge="f", callback=None,
+                                  move="right"):
+        """polygonWall, optionally rotated to match entered point orientation."""
+        if not self.preserve_orientation:
+            self.polygonWall(borders, edge=edge, callback=callback, move=move)
+            return
+
+        try:
+            edges = [self.edges.get(e, e) for e in edge]
+        except TypeError:
+            edges = [self.edges.get(edge, edge)]
+
+        borders_c = self._closePolygon(borders)
+        minx, miny, maxx, maxy = self._polygonWallExtend(borders_c, edges)
+        tw, th = maxx - minx, maxy - miny
+        pw, ph = tw + self.spacing, th + self.spacing
+
+        heading = self._panelHeading()
+        rad = math.radians(heading)
+        c, s = abs(math.cos(rad)), abs(math.sin(rad))
+        Tw = pw * c + ph * s
+        Th = pw * s + ph * c
+
+        if self.move(Tw, Th, move, before=True):
+            return
+
+        # Place the usual (first-edge-horizontal) drawing, then rotate the
+        # whole panel so it matches the entered XY orientation.
+        self.moveTo(Tw / 2.0, Th / 2.0, heading)
+        self.moveTo(-pw / 2.0, -ph / 2.0)
+        self.moveTo(self.spacing / 2.0, self.spacing / 2.0)
+        self.moveTo(-minx, -miny)
+        self.polygonWall(
+            borders, edge=edge, callback=callback, turtle=True)
+        self.move(Tw, Th, move)
+
     def _drawPanel(self, style, move="right"):
         if style == "none":
             return
@@ -268,14 +316,18 @@ The lids need to be glued.
 
         if style == "closed":
             cb = self._panelMateCB if mate else None
-            self.polygonWall(self.borders, edge=edge, callback=cb, move=move)
+            self._polygonWallMaybeOriented(
+                self.borders, edge=edge, callback=cb, move=move)
         elif style == "hole":
             cb = self._panelHoleAndMateCB if mate else [self.holeCB]
-            self.polygonWall(self.borders, edge=edge, callback=cb, move=move)
+            self._polygonWallMaybeOriented(
+                self.borders, edge=edge, callback=cb, move=move)
         elif style == "lid":
             cb = self._panelHoleAndMateCB if mate else [self.holeCB]
-            self.polygonWall(self.borders, edge=edge, callback=cb, move=move)
-            self.polygonWall(self.lid_borders, edge="e", move=move)
+            self._polygonWallMaybeOriented(
+                self.borders, edge=edge, callback=cb, move=move)
+            self._polygonWallMaybeOriented(
+                self.lid_borders, edge="e", move=move)
 
     def _polygonWallsStraight(self, borders, h, bottom, top):
         """Walls with plain vertical edges (butt joints)."""
@@ -315,11 +367,7 @@ The lids need to be glued.
         return _Mate()
 
     def _polygonWallsTSlotMate(self, wall_borders, h, mate_bottom, mate_top):
-        """Walls with T-slot counterpart holes (tslot_on=panels).
-
-        Vertical edges follow ``wall_joints`` (finger or none), matching
-        ``polygonWalls`` pairing/angles when fingers are enabled.
-        """
+        """Walls with T-slot counterpart holes (tslot_on=panels)."""
         wall_borders = self._closePolygon(wall_borders)
         use_fingers = self.wall_joints == "finger"
 
@@ -417,15 +465,14 @@ The lids need to be glued.
             self._drawPanel(self.top, move="right")
 
         panel_e = self._panelEdge()
-        self.polygonWall(self.borders, edge=panel_e, move="up only")
+        self._polygonWallMaybeOriented(
+            self.borders, edge=panel_e, move="up only")
         self.moveTo(0, t)
 
         bottom = self._wallTBEdge(self.bottom)
         top = self._wallTBEdge(self.top)
 
         if self.join == "tslot" and self.tslot_on == "panels":
-            # Panels carry T-slots; walls get aligned counterpart holes.
-            # Do not gate on bottom/top edge chars: those are "e" in this mode.
             mate_bottom = self.bottom != "none"
             mate_top = self.top != "none"
             if mate_bottom or mate_top:

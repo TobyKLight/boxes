@@ -55,6 +55,9 @@ In IrregularBox Settings:
 
 - **wall_joints** — how vertical wall corners meet: ``finger`` or
   ``none`` (butt joints). Independent of panel↔wall join style.
+- **preserve_orientation** — when ticked, the top/bottom polygon panel keeps
+  the orientation of the entered points (instead of rotating so the first
+  edge lies horizontal). Side walls always stay flat.
 - **points** — polygon outline, e.g. ``0,0 120,0 100,80 20,70``
 
 T-Slot Settings 
