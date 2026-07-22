@@ -22,19 +22,18 @@ How to download and run for non-coders
 3. Click the green **Code** button → **Download ZIP**. Unzip the folder
    somewhere convenient (e.g. your Desktop).
 4. Open a terminal in that unzipped folder
-5. Install the python project dependencies 
+5. Install the python project dependencies (the ``.`` at the end is required)::
 
-.. code-block:: rst
+    pip install -e .
 
-    pip install -e
+6. Start the local web UI. Prefer this form so it works even when Python’s
+   Scripts folder is not on your PATH::
 
+    python -m boxes.scripts.boxesserver
 
-6. Start the local web UI::
-
-.. code-block:: rst
+   Or, if ``boxesserver`` is on your PATH::
 
     boxesserver
-
 
 7. Open http://localhost:8000 in your browser. Under **Box**, open
    **IrregularBox**. Change settings and generate SVG for your laser
@@ -66,7 +65,7 @@ T-Slot Settings
 These are in mm 
 
 - **bolt** (5.0) — bolt shaft diameter
-- **nut_width** (7.5) / **nut_height** (3.0) — nut pocket across flats /
+- **nut_width** (8.0) / **nut_height** (4.0) — nut pocket across flats /
   along the shaft
 - **shaft_length** (12.0) — how deep the T goes from the original joining
   surface
@@ -79,7 +78,8 @@ These are relative multipliers of material thickness
 
 - **inner_offset** (1.0) — how far the wall body sits inset from the
   original joining surface; tabs reach back out to that surface; the
-  panel closes the T openings. Play with it is the easiest way to see what it does. 
+  panel closes the T openings. Does not change side-wall width (that
+  still matches the panel edge). Play with it is the easiest way to see what it does. 
 - **tab_offset** (2.5) — centre-to-centre from bolt/T to each support tab
 - **tab_width** (2.0) — width of each support tab
 - **safe** (1.0) — margin outside each tab within a unit

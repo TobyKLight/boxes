@@ -1168,8 +1168,8 @@ Values:
 * absolute
 
   * bolt : 5.0 : bolt shaft diameter in mm
-  * nut_width : 7.5 : nut width across flats in mm
-  * nut_height : 3.0 : nut thickness along the shaft in mm
+  * nut_width : 8.0 : nut width across flats in mm
+  * nut_height : 4.0 : nut thickness along the shaft in mm
   * shaft_length : 12.0 : T-slot depth from the original joining surface in mm
   * nut_offset : 7.0 : distance from the original joining surface to the nut pocket in mm
   * allow_cropped : False : allow one scaled unit when the edge is shorter than one full unit
@@ -1185,8 +1185,8 @@ Values:
 
     absolute_params = {
         "bolt": 5.0,
-        "nut_width": 7.5,
-        "nut_height": 3.0,
+        "nut_width": 8.0,
+        "nut_height": 4.0,
         "shaft_length": 12.0,
         "nut_offset": 7.0,
         "allow_cropped": False,

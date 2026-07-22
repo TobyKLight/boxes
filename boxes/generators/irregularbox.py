@@ -69,8 +69,9 @@ class IrregularBox(Boxes):
 
 Use *join* to choose finger joints or T-slots between panels and walls.
 With T-slots, *tslot_on* selects which side carries the T-cutouts.
-Side walls are inset by *inner_offset* (default one material thickness) so they
-sit within the top/bottom panels and the T-slots are closed by the panel.
+Side walls sit inset from the panel edge by *inner_offset* (default one
+material thickness) so the panel closes the T-slots; wall *lengths* still
+match the panel edges.
 *wall_joints* controls vertical wall-to-wall edges (finger joints or plain).
 *preserve_orientation* keeps the top/bottom polygon panel in the same
 orientation as the entered points (instead of rotating it so the first
@@ -116,7 +117,7 @@ The lids need to be glued.
             help="vertical wall-to-wall joints")
         self.argparser.add_argument(
             "--preserve_orientation", action="store", type=boolarg,
-            default=False,
+            default=True,
             help="keep the polygon panel oriented as entered (do not flatten first edge)")
 
     @staticmethod
@@ -399,19 +400,22 @@ The lids need to be glued.
             else:
                 left = right = self.edges["e"]
 
-            length = wall_borders[i] - length_correction
+            length = wall_borders[i]
             angle = wall_borders[i + 1]
 
             if use_fingers:
+                # Corner finger joints need the same miter-style length
+                # correction as polygonWalls; plain butt joints do not.
+                length -= length_correction
                 rightsettings.setValues(self.thickness, angle=angle)
                 if angle == 0:
                     right = self.edges["D"]
-            if angle < 0:
-                length_correction = self.thickness * math.tan(
-                    math.radians(-angle / 2))
-            else:
-                length_correction = 0.0
-            length -= length_correction
+                if angle < 0:
+                    length_correction = self.thickness * math.tan(
+                        math.radians(-angle / 2))
+                else:
+                    length_correction = 0.0
+                length -= length_correction
 
             bottom_e = self._mateEdge(edge_i) if mate_bottom else self.edges["e"]
             top_e = self._mateEdge(edge_i) if mate_top else self.edges["e"]
@@ -447,18 +451,10 @@ The lids need to be glued.
         self.lid_borders = self.pointsToBorders(
             vectors.kerf(points, t))
 
-        # With T-slots, side walls sit inset from the panel outer edge so the
-        # panel closes the T openings. Wall lengths follow the inset polygon.
-        if self.join == "tslot":
-            inset = self.edges["w"].settings.inner_offset
-            wall_points = vectors.kerf(points, -inset)
-            if len(wall_points) < 3:
-                raise ValueError(
-                    "T-slot inner_offset is too large for this polygon; "
-                    "walls would collapse")
-            self.wall_borders = self.pointsToBorders(wall_points)
-        else:
-            self.wall_borders = self.borders
+        # Wall lengths match the panel edges. inner_offset only sets how far
+        # the wall sits in from the panel edge (T/hole geometry), not a second
+        # shrink of the wall width.
+        self.wall_borders = self.borders
 
         with self.saved_context():
             self._drawPanel(self.bottom, move="right")
